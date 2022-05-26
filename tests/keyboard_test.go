@@ -47,7 +47,7 @@ func TestKeyboardPress(t *testing.T) {
 	})
 
 	t.Run("combo", func(t *testing.T) {
-		t.Skip("FIXME") // See https://github.com/grafana/xk6-browser/issues/285
+		// t.Skip("FIXME") // See https://github.com/grafana/xk6-browser/issues/285
 		p := tb.NewPage(nil)
 		cp, ok := p.(*common.Page)
 		require.True(t, ok)

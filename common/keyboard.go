@@ -23,6 +23,7 @@ package common
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/xk6-browser/api"
@@ -115,58 +116,68 @@ func (k *Keyboard) Type(text string, opts goja.Value) {
 	}
 }
 
-func (k *Keyboard) down(key string) error {
-	keyInput := keyboardlayout.KeyInput(key)
-	if _, ok := k.layout.ValidKeys[keyInput]; !ok {
-		return fmt.Errorf("%q is not a valid key for layout %q", key, k.layoutName)
-	}
+// Can pass in more than one key as long as they are separated by a `+`.
+func (k *Keyboard) down(keys string) error {
+	kk := strings.Split(keys, "+")
 
-	keyDef := k.keyDefinitionFromKey(keyInput)
-	k.modifiers |= k.modifierBitFromKeyName(keyDef.Key)
-	text := keyDef.Text
-	_, autoRepeat := k.pressedKeys[keyDef.KeyCode]
-	k.pressedKeys[keyDef.KeyCode] = true
+	for _, key := range kk {
+		keyInput := keyboardlayout.KeyInput(key)
+		if _, ok := k.layout.ValidKeys[keyInput]; !ok {
+			return fmt.Errorf("%q is not a valid key for layout %q", key, k.layoutName)
+		}
 
-	keyType := input.KeyDown
-	if text == "" {
-		keyType = input.KeyRawDown
-	}
+		keyDef := k.keyDefinitionFromKey(keyInput)
+		k.modifiers |= k.modifierBitFromKeyName(keyDef.Key)
+		text := keyDef.Text
+		_, autoRepeat := k.pressedKeys[keyDef.KeyCode]
+		k.pressedKeys[keyDef.KeyCode] = true
 
-	action := input.DispatchKeyEvent(keyType).
-		WithModifiers(input.Modifier(k.modifiers)).
-		WithKey(keyDef.Key).
-		WithWindowsVirtualKeyCode(keyDef.KeyCode).
-		WithCode(keyDef.Code).
-		WithLocation(keyDef.Location).
-		WithIsKeypad(keyDef.Location == 3).
-		WithText(text).
-		WithUnmodifiedText(text).
-		WithAutoRepeat(autoRepeat)
-	if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
-		return fmt.Errorf("cannot execute dispatch key event down: %w", err)
+		keyType := input.KeyDown
+		if text == "" {
+			keyType = input.KeyRawDown
+		}
+
+		action := input.DispatchKeyEvent(keyType).
+			WithModifiers(input.Modifier(k.modifiers)).
+			WithKey(keyDef.Key).
+			WithWindowsVirtualKeyCode(keyDef.KeyCode).
+			WithCode(keyDef.Code).
+			WithLocation(keyDef.Location).
+			WithIsKeypad(keyDef.Location == 3).
+			WithText(text).
+			WithUnmodifiedText(text).
+			WithAutoRepeat(autoRepeat)
+		if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
+			return fmt.Errorf("cannot execute dispatch key event down: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (k *Keyboard) up(key string) error {
-	keyInput := keyboardlayout.KeyInput(key)
-	if _, ok := k.layout.ValidKeys[keyInput]; !ok {
-		return fmt.Errorf("'%s' is not a valid key for layout '%s'", key, k.layoutName)
-	}
+// Can pass in more than one key as long as they are separated by a `+`.
+func (k *Keyboard) up(keys string) error {
+	kk := strings.Split(keys, "+")
 
-	keyDef := k.keyDefinitionFromKey(keyInput)
-	k.modifiers &= ^k.modifierBitFromKeyName(keyDef.Key)
-	delete(k.pressedKeys, keyDef.KeyCode)
+	for _, key := range kk {
+		keyInput := keyboardlayout.KeyInput(key)
+		if _, ok := k.layout.ValidKeys[keyInput]; !ok {
+			return fmt.Errorf("'%s' is not a valid key for layout '%s'", key, k.layoutName)
+		}
 
-	action := input.DispatchKeyEvent(input.KeyUp).
-		WithModifiers(input.Modifier(k.modifiers)).
-		WithKey(keyDef.Key).
-		WithWindowsVirtualKeyCode(keyDef.KeyCode).
-		WithCode(keyDef.Code).
-		WithLocation(keyDef.Location)
-	if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
-		return fmt.Errorf("cannot execute dispatch key event up: %w", err)
+		keyDef := k.keyDefinitionFromKey(keyInput)
+		k.modifiers &= ^k.modifierBitFromKeyName(keyDef.Key)
+		delete(k.pressedKeys, keyDef.KeyCode)
+
+		action := input.DispatchKeyEvent(input.KeyUp).
+			WithModifiers(input.Modifier(k.modifiers)).
+			WithKey(keyDef.Key).
+			WithWindowsVirtualKeyCode(keyDef.KeyCode).
+			WithCode(keyDef.Code).
+			WithLocation(keyDef.Location)
+		if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
+			return fmt.Errorf("cannot execute dispatch key event up: %w", err)
+		}
 	}
 
 	return nil
