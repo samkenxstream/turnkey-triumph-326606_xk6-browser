@@ -29,9 +29,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/xk6-browser/log"
-
 	"github.com/grafana/xk6-browser/k6ext"
+	"github.com/grafana/xk6-browser/log"
 
 	k6modules "go.k6.io/k6/js/modules"
 	k6lib "go.k6.io/k6/lib"
