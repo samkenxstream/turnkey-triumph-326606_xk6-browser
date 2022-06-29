@@ -23,7 +23,6 @@ package common
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/grafana/xk6-browser/api"
@@ -43,6 +42,35 @@ const (
 	ModifierKeyMeta
 	ModifierKeyShift
 )
+
+var keyAToKeyZ = map[string]interface{}{
+	"KeyA": nil,
+	"KeyB": nil,
+	"KeyC": nil,
+	"KeyD": nil,
+	"KeyE": nil,
+	"KeyF": nil,
+	"KeyG": nil,
+	"KeyH": nil,
+	"KeyI": nil,
+	"KeyJ": nil,
+	"KeyK": nil,
+	"KeyL": nil,
+	"KeyM": nil,
+	"KeyN": nil,
+	"KeyO": nil,
+	"KeyP": nil,
+	"KeyQ": nil,
+	"KeyR": nil,
+	"KeyS": nil,
+	"KeyT": nil,
+	"KeyU": nil,
+	"KeyV": nil,
+	"KeyW": nil,
+	"KeyX": nil,
+	"KeyY": nil,
+	"KeyZ": nil,
+}
 
 // Keyboard represents a keyboard input device.
 // Each Page has a publicly accessible Keyboard.
@@ -192,9 +220,11 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 		srcKeyDef, ok = k.layout.KeyDefinition(key)
 	}
 	// Try to find with the shift key value
+	var foundInShift bool
 	if !ok {
 		srcKeyDef = k.layout.ShiftKeyDefinition(key)
 		shift = k.modifiers | ModifierKeyShift
+		foundInShift = true
 	}
 
 	var keyDef keyboardlayout.KeyDefinition
@@ -219,14 +249,7 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 	if srcKeyDef.Text != "" {
 		keyDef.Text = srcKeyDef.Text
 	}
-
-	strKey := string(key)
-	if strings.ToUpper(strKey) == strKey && srcKeyDef.ShiftKey != "" {
-		keyDef.Key = srcKeyDef.ShiftKey
-		keyDef.Text = srcKeyDef.ShiftKey
-	}
-
-	if shift != 0 && srcKeyDef.ShiftKey != "" && strings.Contains(string(key), "Key") {
+	if _, ok := keyAToKeyZ[string(key)]; (ok || foundInShift) && shift != 0 && srcKeyDef.ShiftKey != "" {
 		keyDef.Key = srcKeyDef.ShiftKey
 		keyDef.Text = srcKeyDef.ShiftKey
 	}
@@ -261,10 +284,7 @@ func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
 		}
 	}
 
-	kk := []string{"+"}
-	if keys != "+" {
-		kk = strings.Split(keys, "+")
-	}
+	kk := split(keys)
 	for _, key := range kk {
 		if err := k.down(key); err != nil {
 			return fmt.Errorf("cannot do key down: %w", err)
@@ -279,6 +299,39 @@ func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
 	}
 
 	return nil
+}
+
+// This splits the string on `+`.
+// If `+` on it's own is passed, it will return ["+"].
+// If `++` is passed in, it will return ["+", ""].
+// If `+++` is passed in, it will return ["+", "+"].
+func split(keys string) []string {
+	kk := []string{}
+	var ss string
+	justAdded := true
+	for _, s := range keys {
+		if string(s) == "+" && ss != "" {
+			kk = append(kk, ss)
+			ss = ""
+			justAdded = true
+		} else if string(s) == "+" {
+			if justAdded {
+				kk = append(kk, "+")
+				ss = ""
+				justAdded = false
+			} else {
+				justAdded = true
+			}
+		} else {
+			ss += string(s)
+			justAdded = false
+		}
+	}
+	if ss != "" || justAdded {
+		kk = append(kk, ss)
+	}
+
+	return kk
 }
 
 func (k *Keyboard) press(key string, opts *KeyboardOptions) error {

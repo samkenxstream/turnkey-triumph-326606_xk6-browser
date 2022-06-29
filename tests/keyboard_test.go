@@ -56,6 +56,10 @@ func TestKeyboardPress(t *testing.T) {
 		el := p.Query("input")
 		p.Focus("input", nil)
 
+		kb.Press("Shift++", nil)
+		kb.Press("Shift+=", nil)
+		kb.Press("Shift+@", nil)
+		kb.Press("Shift+6", nil)
 		kb.Press("Shift+KeyA", nil)
 		kb.Press("Shift+b", nil)
 		kb.Press("Shift+C", nil)
@@ -64,7 +68,7 @@ func TestKeyboardPress(t *testing.T) {
 		kb.Press("Control+J", nil)
 		kb.Press("Control+k", nil)
 
-		require.Equal(t, "AbC", el.InputValue(nil))
+		require.Equal(t, "+=@6AbC", el.InputValue(nil))
 	})
 
 	t.Run("meta", func(t *testing.T) {
@@ -118,9 +122,27 @@ func TestKeyboardPress(t *testing.T) {
 		p.Focus("textarea", nil)
 
 		kb.Press("+", nil)
+		kb.Press("+++", nil)
+		kb.Press("+++++", nil)
 		kb.Down("+")
 		kb.Up("+")
-		assert.Equal(t, "++", el.InputValue(nil))
+		assert.Equal(t, "+++++++", el.InputValue(nil))
+	})
+
+	t.Run("not enough +", func(t *testing.T) {
+		p := tb.NewPage(nil)
+		cp, ok := p.(*common.Page)
+		require.True(t, ok)
+		kb := cp.Keyboard
+
+		p.SetContent(`<textarea>`, nil)
+		p.Focus("textarea", nil)
+
+		defer func() { recover() }()
+
+		assert.Panics(t, func() { kb.Press("++", nil) }, "should panic when press passed \"++\" since it will try to look for a key \"\"")
+
+		assert.Panics(t, func() { kb.Press("Shift+++", nil) }, "should panic when press passed \"Shift+++\" since it will try to look for a key \"\"")
 	})
 
 	t.Run("capitalization", func(t *testing.T) {
