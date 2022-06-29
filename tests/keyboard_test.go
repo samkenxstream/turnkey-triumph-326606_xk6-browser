@@ -138,11 +138,9 @@ func TestKeyboardPress(t *testing.T) {
 		p.SetContent(`<textarea>`, nil)
 		p.Focus("textarea", nil)
 
-		defer func() { recover() }()
+		assert.Panics(t, func() { kb.Press("++", nil) })
 
-		assert.Panics(t, func() { kb.Press("++", nil) }, "should panic when press passed \"++\" since it will try to look for a key \"\"")
-
-		assert.Panics(t, func() { kb.Press("Shift+++", nil) }, "should panic when press passed \"Shift+++\" since it will try to look for a key \"\"")
+		assert.Panics(t, func() { kb.Press("Shift+++", nil) })
 	})
 
 	t.Run("capitalization", func(t *testing.T) {

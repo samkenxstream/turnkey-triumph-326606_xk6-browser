@@ -43,6 +43,7 @@ const (
 	ModifierKeyShift
 )
 
+//nolint:gochecknoglobals
 var keyAToKeyZ = map[string]interface{}{
 	"KeyA": nil,
 	"KeyB": nil,
@@ -310,6 +311,7 @@ func split(keys string) []string {
 	var ss string
 	justAdded := true
 	for _, s := range keys {
+		//nolint:gocritic
 		if string(s) == "+" && ss != "" {
 			kk = append(kk, ss)
 			ss = ""
