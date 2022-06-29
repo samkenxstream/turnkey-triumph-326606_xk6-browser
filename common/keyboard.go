@@ -89,7 +89,8 @@ func (k *Keyboard) Press(key string, opts goja.Value) {
 	if err := kbdOpts.Parse(k.ctx, opts); err != nil {
 		k6ext.Panic(k.ctx, "cannot parse keyboard options: %w", err)
 	}
-	if err := k.press(key, kbdOpts); err != nil {
+
+	if err := k.comboPress(key, kbdOpts); err != nil {
 		k6ext.Panic(k.ctx, "cannot press key: %w", err)
 	}
 }
@@ -116,68 +117,58 @@ func (k *Keyboard) Type(text string, opts goja.Value) {
 	}
 }
 
-// Can pass in more than one key as long as they are separated by a `+`.
-func (k *Keyboard) down(keys string) error {
-	kk := strings.Split(keys, "+")
+func (k *Keyboard) down(key string) error {
+	keyInput := keyboardlayout.KeyInput(key)
+	if _, ok := k.layout.ValidKeys[keyInput]; !ok {
+		return fmt.Errorf("%q is not a valid key for layout %q", key, k.layoutName)
+	}
 
-	for _, key := range kk {
-		keyInput := keyboardlayout.KeyInput(key)
-		if _, ok := k.layout.ValidKeys[keyInput]; !ok {
-			return fmt.Errorf("%q is not a valid key for layout %q", key, k.layoutName)
-		}
+	keyDef := k.keyDefinitionFromKey(keyInput)
+	k.modifiers |= k.modifierBitFromKeyName(keyDef.Key)
+	text := keyDef.Text
+	_, autoRepeat := k.pressedKeys[keyDef.KeyCode]
+	k.pressedKeys[keyDef.KeyCode] = true
 
-		keyDef := k.keyDefinitionFromKey(keyInput)
-		k.modifiers |= k.modifierBitFromKeyName(keyDef.Key)
-		text := keyDef.Text
-		_, autoRepeat := k.pressedKeys[keyDef.KeyCode]
-		k.pressedKeys[keyDef.KeyCode] = true
+	keyType := input.KeyDown
+	if text == "" {
+		keyType = input.KeyRawDown
+	}
 
-		keyType := input.KeyDown
-		if text == "" {
-			keyType = input.KeyRawDown
-		}
-
-		action := input.DispatchKeyEvent(keyType).
-			WithModifiers(input.Modifier(k.modifiers)).
-			WithKey(keyDef.Key).
-			WithWindowsVirtualKeyCode(keyDef.KeyCode).
-			WithCode(keyDef.Code).
-			WithLocation(keyDef.Location).
-			WithIsKeypad(keyDef.Location == 3).
-			WithText(text).
-			WithUnmodifiedText(text).
-			WithAutoRepeat(autoRepeat)
-		if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
-			return fmt.Errorf("cannot execute dispatch key event down: %w", err)
-		}
+	action := input.DispatchKeyEvent(keyType).
+		WithModifiers(input.Modifier(k.modifiers)).
+		WithKey(keyDef.Key).
+		WithWindowsVirtualKeyCode(keyDef.KeyCode).
+		WithCode(keyDef.Code).
+		WithLocation(keyDef.Location).
+		WithIsKeypad(keyDef.Location == 3).
+		WithText(text).
+		WithUnmodifiedText(text).
+		WithAutoRepeat(autoRepeat)
+	if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
+		return fmt.Errorf("cannot execute dispatch key event down: %w", err)
 	}
 
 	return nil
 }
 
-// Can pass in more than one key as long as they are separated by a `+`.
-func (k *Keyboard) up(keys string) error {
-	kk := strings.Split(keys, "+")
+func (k *Keyboard) up(key string) error {
+	keyInput := keyboardlayout.KeyInput(key)
+	if _, ok := k.layout.ValidKeys[keyInput]; !ok {
+		return fmt.Errorf("'%s' is not a valid key for layout '%s'", key, k.layoutName)
+	}
 
-	for _, key := range kk {
-		keyInput := keyboardlayout.KeyInput(key)
-		if _, ok := k.layout.ValidKeys[keyInput]; !ok {
-			return fmt.Errorf("'%s' is not a valid key for layout '%s'", key, k.layoutName)
-		}
+	keyDef := k.keyDefinitionFromKey(keyInput)
+	k.modifiers &= ^k.modifierBitFromKeyName(keyDef.Key)
+	delete(k.pressedKeys, keyDef.KeyCode)
 
-		keyDef := k.keyDefinitionFromKey(keyInput)
-		k.modifiers &= ^k.modifierBitFromKeyName(keyDef.Key)
-		delete(k.pressedKeys, keyDef.KeyCode)
-
-		action := input.DispatchKeyEvent(input.KeyUp).
-			WithModifiers(input.Modifier(k.modifiers)).
-			WithKey(keyDef.Key).
-			WithWindowsVirtualKeyCode(keyDef.KeyCode).
-			WithCode(keyDef.Code).
-			WithLocation(keyDef.Location)
-		if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
-			return fmt.Errorf("cannot execute dispatch key event up: %w", err)
-		}
+	action := input.DispatchKeyEvent(input.KeyUp).
+		WithModifiers(input.Modifier(k.modifiers)).
+		WithKey(keyDef.Key).
+		WithWindowsVirtualKeyCode(keyDef.KeyCode).
+		WithCode(keyDef.Code).
+		WithLocation(keyDef.Location)
+	if err := action.Do(cdp.WithExecutor(k.ctx, k.session)); err != nil {
+		return fmt.Errorf("cannot execute dispatch key event up: %w", err)
 	}
 
 	return nil
@@ -228,7 +219,14 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 	if srcKeyDef.Text != "" {
 		keyDef.Text = srcKeyDef.Text
 	}
-	if shift != 0 && srcKeyDef.ShiftKey != "" {
+
+	strKey := string(key)
+	if strings.ToUpper(strKey) == strKey && srcKeyDef.ShiftKey != "" {
+		keyDef.Key = srcKeyDef.ShiftKey
+		keyDef.Text = srcKeyDef.ShiftKey
+	}
+
+	if shift != 0 && srcKeyDef.ShiftKey != "" && strings.Contains(string(key), "Key") {
 		keyDef.Key = srcKeyDef.ShiftKey
 		keyDef.Text = srcKeyDef.ShiftKey
 	}
@@ -251,6 +249,36 @@ func (k *Keyboard) modifierBitFromKeyName(key string) int64 {
 		return ModifierKeyShift
 	}
 	return 0
+}
+
+func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
+	if opts.Delay != 0 {
+		t := time.NewTimer(time.Duration(opts.Delay) * time.Millisecond)
+		select {
+		case <-k.ctx.Done():
+			t.Stop()
+		case <-t.C:
+		}
+	}
+
+	kk := []string{"+"}
+	if keys != "+" {
+		kk = strings.Split(keys, "+")
+	}
+	for _, key := range kk {
+		if err := k.down(key); err != nil {
+			return fmt.Errorf("cannot do key down: %w", err)
+		}
+	}
+
+	for i := len(kk) - 1; i >= 0; i-- {
+		key := kk[i]
+		if err := k.up(key); err != nil {
+			return fmt.Errorf("cannot do key up: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (k *Keyboard) press(key string, opts *KeyboardOptions) error {
