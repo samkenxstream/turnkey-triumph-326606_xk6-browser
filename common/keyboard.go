@@ -327,35 +327,19 @@ func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
 // If `++` is passed in, it will return ["+", ""].
 // If `+++` is passed in, it will return ["+", "+"].
 func split(keys string) []string {
-	kk := []string{}
-	var ss string
-	justAdded := true
-	for _, k := range keys {
-		var sb strings.Builder
-		sb.WriteRune(k)
-		s := sb.String()
-
-		switch {
-		case s == "+" && ss != "":
-			kk = append(kk, ss)
-			ss = ""
-			justAdded = true
-		case s == "+":
-			if justAdded {
-				kk = append(kk, "+")
-				ss = ""
-				justAdded = false
-			} else {
-				justAdded = true
-			}
-		default:
-			ss += s
-			justAdded = false
+	var (
+		kk = make([]string, 0, len(keys))
+		s  strings.Builder
+	)
+	for _, r := range keys {
+		if r == '+' && s.Len() > 0 {
+			kk = append(kk, s.String())
+			s.Reset()
+		} else {
+			s.WriteRune(r)
 		}
 	}
-	if ss != "" || justAdded {
-		kk = append(kk, ss)
-	}
+	kk = append(kk, s.String())
 
 	return kk
 }
