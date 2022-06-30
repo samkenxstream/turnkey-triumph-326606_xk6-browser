@@ -23,6 +23,7 @@ package common
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/xk6-browser/api"
@@ -42,36 +43,6 @@ const (
 	ModifierKeyMeta
 	ModifierKeyShift
 )
-
-//nolint:gochecknoglobals
-var keyAToKeyZ = map[string]interface{}{
-	"KeyA": nil,
-	"KeyB": nil,
-	"KeyC": nil,
-	"KeyD": nil,
-	"KeyE": nil,
-	"KeyF": nil,
-	"KeyG": nil,
-	"KeyH": nil,
-	"KeyI": nil,
-	"KeyJ": nil,
-	"KeyK": nil,
-	"KeyL": nil,
-	"KeyM": nil,
-	"KeyN": nil,
-	"KeyO": nil,
-	"KeyP": nil,
-	"KeyQ": nil,
-	"KeyR": nil,
-	"KeyS": nil,
-	"KeyT": nil,
-	"KeyU": nil,
-	"KeyV": nil,
-	"KeyW": nil,
-	"KeyX": nil,
-	"KeyY": nil,
-	"KeyZ": nil,
-}
 
 // Keyboard represents a keyboard input device.
 // Each Page has a publicly accessible Keyboard.
@@ -221,6 +192,8 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 		srcKeyDef, ok = k.layout.KeyDefinition(key)
 	}
 	// Try to find with the shift key value
+	// e.g. for `@`, the shift modifier needs to
+	// be used.
 	var foundInShift bool
 	if !ok {
 		srcKeyDef = k.layout.ShiftKeyDefinition(key)
@@ -250,7 +223,18 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 	if srcKeyDef.Text != "" {
 		keyDef.Text = srcKeyDef.Text
 	}
-	if _, ok := keyAToKeyZ[string(key)]; (ok || foundInShift) && shift != 0 && srcKeyDef.ShiftKey != "" {
+	// Shift is only used on keys which are `KeyX`` (where X is
+	// A-Z), or on keys which require shift to be pressed e.g.
+	// `@`, and shift must be pressed as well as a shiftKey
+	// text value present for the key.
+	// Not all keys have a text value when shift is pressed
+	// e.g. `Control`.
+	// When a key such as `2` is pressed, we must ignore shift
+	// otherwise we would type `@`.
+	isKeyXOrOnShiftLayerAndShiftUsed := (isKeyX(string(key)) || foundInShift) &&
+		shift != 0 &&
+		srcKeyDef.ShiftKey != ""
+	if isKeyXOrOnShiftLayerAndShiftUsed {
 		keyDef.Key = srcKeyDef.ShiftKey
 		keyDef.Text = srcKeyDef.ShiftKey
 	}
@@ -259,6 +243,39 @@ func (k *Keyboard) keyDefinitionFromKey(key keyboardlayout.KeyInput) keyboardlay
 		keyDef.Text = ""
 	}
 	return keyDef
+}
+
+func isKeyX(key string) bool {
+	_, ok := map[string]interface{}{
+		"KeyA": nil,
+		"KeyB": nil,
+		"KeyC": nil,
+		"KeyD": nil,
+		"KeyE": nil,
+		"KeyF": nil,
+		"KeyG": nil,
+		"KeyH": nil,
+		"KeyI": nil,
+		"KeyJ": nil,
+		"KeyK": nil,
+		"KeyL": nil,
+		"KeyM": nil,
+		"KeyN": nil,
+		"KeyO": nil,
+		"KeyP": nil,
+		"KeyQ": nil,
+		"KeyR": nil,
+		"KeyS": nil,
+		"KeyT": nil,
+		"KeyU": nil,
+		"KeyV": nil,
+		"KeyW": nil,
+		"KeyX": nil,
+		"KeyY": nil,
+		"KeyZ": nil,
+	}[key]
+
+	return ok
 }
 
 func (k *Keyboard) modifierBitFromKeyName(key string) int64 {
@@ -280,7 +297,10 @@ func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
 		t := time.NewTimer(time.Duration(opts.Delay) * time.Millisecond)
 		select {
 		case <-k.ctx.Done():
-			t.Stop()
+			if !t.Stop() {
+				<-t.C
+			}
+			return context.Canceled
 		case <-t.C:
 		}
 	}
@@ -292,8 +312,8 @@ func (k *Keyboard) comboPress(keys string, opts *KeyboardOptions) error {
 		}
 	}
 
-	for i := len(kk) - 1; i >= 0; i-- {
-		key := kk[i]
+	for i := range kk {
+		key := kk[len(kk)-i-1]
 		if err := k.up(key); err != nil {
 			return fmt.Errorf("cannot do key up: %w", err)
 		}
@@ -310,13 +330,17 @@ func split(keys string) []string {
 	kk := []string{}
 	var ss string
 	justAdded := true
-	for _, s := range keys {
-		//nolint:gocritic
-		if string(s) == "+" && ss != "" {
+	for _, k := range keys {
+		var sb strings.Builder
+		sb.WriteRune(k)
+		s := sb.String()
+
+		switch {
+		case s == "+" && ss != "":
 			kk = append(kk, ss)
 			ss = ""
 			justAdded = true
-		} else if string(s) == "+" {
+		case s == "+":
 			if justAdded {
 				kk = append(kk, "+")
 				ss = ""
@@ -324,8 +348,8 @@ func split(keys string) []string {
 			} else {
 				justAdded = true
 			}
-		} else {
-			ss += string(s)
+		default:
+			ss += s
 			justAdded = false
 		}
 	}
